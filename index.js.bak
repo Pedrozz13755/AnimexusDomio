@@ -1,42 +1,44 @@
 const http = require('http');
+const httpProxy = require('http-proxy');
 
-const targetUrl = 'http://speedhosting.cloud:2040';
+// Cria um servidor proxy
+const proxy = httpProxy.createProxyServer({});
 
-function handleProxyError(err, res) {
+// Função para logar erros de proxy
+function handleProxyError(err, req, res) {
   console.error(`Proxy error: ${err.message}`);
   res.writeHead(502, { 'Content-Type': 'text/plain' });
   res.end('Bad gateway');
 }
 
-// Criação do servidor HTTP
+// Cria um servidor HTTP
 const server = http.createServer((req, res) => {
+  const targetUrl = 'http://speedhosting.cloud:2040';
+
+  // Verifica se o método é permitido
   if (!['GET', 'POST'].includes(req.method)) {
     res.writeHead(405, { 'Content-Type': 'text/plain' });
     return res.end('Method Not Allowed');
   }
 
+  // Define o timeout para 30 segundos
   req.setTimeout(30000, () => {
     res.writeHead(504, { 'Content-Type': 'text/plain' });
     res.end('Gateway Timeout');
   });
 
-  const options = {
-    hostname: 'speedhosting.cloud',
-    port: 2040,
-    path: req.url,
-    method: req.method,
-    headers: req.headers,
-  };
-
-  const proxyReq = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res);
+  // Faz o proxy da requisição
+  proxy.web(req, res, { target: targetUrl }, (err) => {
+    handleProxyError(err, req, res);
   });
-
-  proxyReq.on('error', (err) => handleProxyError(err, res));
-  req.pipe(proxyReq);
+  
+  // Lida com erros do proxy
+  proxy.on('error', (err) => {
+    console.error('Proxy error:', err);
+  });
 });
 
+// Lida com erros do servidor
 server.on('error', (err) => {
   console.error('Server error:', err);
 });
